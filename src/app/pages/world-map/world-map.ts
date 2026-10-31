@@ -1,50 +1,30 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, afterNextRender, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
+import * as L from 'leaflet';
+import { LANDMARKS, LANDMARK_TYPES, LandmarkType } from '../../data/landmarks.mock';
+import { MAP_CONFIG as CFG } from '../../data/map-config';
 import { biomeResources } from '../../data/world.mock';
-import { WORLD_BOUNDS, ZONES, Zone, zoneAt } from '../../data/zones.mock';
+import { ZONES, Zone, zoneAt } from '../../data/zones.mock';
 import { PlayerService } from '../../services/player.service';
 
-const CELL = 24;
-const COLS = WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX + 1;
-const ROWS = WORLD_BOUNDS.maxY - WORLD_BOUNDS.minY + 1;
-const WIDTH = COLS * CELL;
-const HEIGHT = ROWS * CELL;
-const DRAG_THRESHOLD = 4;
-
-interface MapCell {
+interface Coord {
   x: number;
   y: number;
-  zone: Zone;
-  px: number;
-  py: number;
 }
 
-interface View {
-  x: number;
-  y: number;
-  w: number;
+const LANDMARK_KEYS = Object.keys(LANDMARK_TYPES) as LandmarkType[];
+
+function cellToPx(x: number, y: number) {
+  return { px: CFG.origin.x + x * CFG.cell.width, py: CFG.origin.y + y * CFG.cell.height };
 }
 
-function toPx(x: number, y: number) {
-  return { px: (x - WORLD_BOUNDS.minX) * CELL, py: (y - WORLD_BOUNDS.minY) * CELL };
+function pxToCell(px: number, py: number): Coord {
+  return { x: Math.floor((px - CFG.origin.x) / CFG.cell.width), y: Math.floor((py - CFG.origin.y) / CFG.cell.height) };
 }
 
-const CELLS: MapCell[] = [];
-for (let y = WORLD_BOUNDS.minY; y <= WORLD_BOUNDS.maxY; y++) {
-  for (let x = WORLD_BOUNDS.minX; x <= WORLD_BOUNDS.maxX; x++) {
-    const zone = zoneAt(x, y);
-    if (zone) CELLS.push({ x, y, zone, ...toPx(x, y) });
-  }
+function inBounds({ x, y }: Coord): boolean {
+  return x >= CFG.bounds.minX && x <= CFG.bounds.maxX && y >= CFG.bounds.minY && y <= CFG.bounds.maxY;
 }
-
-const ZONE_LABELS = ZONES.map((zone) => {
-  const cells = CELLS.filter((c) => c.zone === zone);
-  return {
-    zone,
-    px: cells.reduce((s, c) => s + c.px, 0) / cells.length + CELL / 2,
-    py: cells.reduce((s, c) => s + c.py, 0) / cells.length + CELL / 2,
-  };
-});
 
 @Component({
   selector: 'app-world-map',
@@ -54,124 +34,232 @@ const ZONE_LABELS = ZONES.map((zone) => {
 export class WorldMap {
   private readonly router = inject(Router);
   protected readonly player = inject(PlayerService);
+  private readonly mapEl = viewChild.required<ElementRef<HTMLDivElement>>('mapEl');
 
-  protected readonly cell = CELL;
-  protected readonly cells = CELLS;
-  protected readonly zoneLabels = ZONE_LABELS;
-  protected readonly aspect = `${WIDTH} / ${HEIGHT}`;
+  protected readonly zones = ZONES;
+  protected readonly usesTiles = !!CFG.tileUrl;
+  protected readonly landmarkIcons = LANDMARK_TYPES;
+  protected readonly landmarkTypes = LANDMARK_KEYS.map((type) => ({
+    type,
+    ...LANDMARK_TYPES[type],
+    count: LANDMARKS.filter((l) => l.type === type).length,
+  }));
 
-  protected readonly view = signal<View>({ x: 0, y: 0, w: WIDTH });
-  protected readonly hovered = signal<MapCell | null>(null);
-  protected readonly selected = signal<MapCell | null>(null);
+  protected readonly showGrid = signal(true);
+  protected readonly activeLayers = signal<Set<LandmarkType>>(new Set(['donjon', 'zaap']));
+  protected readonly hovered = signal<Coord | null>(null);
+  protected readonly selected = signal<Coord | null>(null);
   protected readonly searchError = signal(false);
 
-  protected readonly viewBox = computed(() => {
-    const v = this.view();
-    return `${v.x} ${v.y} ${v.w} ${(v.w * HEIGHT) / WIDTH}`;
-  });
+  protected readonly activeSummary = computed(() =>
+    this.landmarkTypes
+      .filter((t) => this.activeLayers().has(t.type))
+      .map((t) => `${t.label} (${t.count})`)
+      .join(' · '),
+  );
 
-  protected readonly zoomLevel = computed(() => Math.round((WIDTH / this.view().w) * 100));
-
-  protected readonly playerPx = computed(() => {
-    const { x, y } = this.player.position();
-    const { px, py } = toPx(x, y);
-    return { px: px + CELL / 2, py: py + CELL / 2 };
+  protected readonly hoveredZone = computed(() => {
+    const h = this.hovered();
+    return h ? zoneAt(h.x, h.y) : undefined;
   });
 
   protected readonly selectedInfo = computed(() => {
     const cell = this.selected();
     if (!cell) return null;
+    const zone = zoneAt(cell.x, cell.y);
     const pos = this.player.position();
     return {
       ...cell,
-      resources: biomeResources(cell.zone.biome),
+      zone,
+      resources: zone ? biomeResources(zone.biome) : [],
+      landmarks: LANDMARKS.filter((l) => l.x === cell.x && l.y === cell.y),
       isHere: pos.x === cell.x && pos.y === cell.y,
       distance: Math.abs(pos.x - cell.x) + Math.abs(pos.y - cell.y),
     };
   });
 
-  private drag: { startX: number; startY: number; view: View; moved: boolean } | null = null;
-  private suppressClick = false;
+  private readonly ready = signal(false);
+  private map!: L.Map;
+  private gridLayer = L.layerGroup();
+  private landmarkLayers = Object.fromEntries(LANDMARK_KEYS.map((t) => [t, L.layerGroup()])) as Record<LandmarkType, L.LayerGroup>;
+  private playerMarker?: L.Marker;
+  private selectionRect?: L.Rectangle;
 
   constructor() {
-    this.centerOnPlayer(2);
+    afterNextRender(() => this.init());
+    inject(DestroyRef).onDestroy(() => this.map?.remove());
+
+    effect(() => {
+      if (!this.ready()) return;
+      this.toggleLayer(this.gridLayer, this.showGrid());
+      const active = this.activeLayers();
+      for (const type of LANDMARK_KEYS) this.toggleLayer(this.landmarkLayers[type], active.has(type));
+    });
+
+    effect(() => {
+      if (!this.ready()) return;
+      const { x, y } = this.player.position();
+      this.playerMarker?.setLatLng(this.cellCenter(x, y));
+    });
+
+    effect(() => {
+      if (!this.ready()) return;
+      const cell = this.selected();
+      this.selectionRect?.remove();
+      this.selectionRect = cell ? L.rectangle(this.cellBounds(cell.x, cell.y), { className: 'selection-rect', interactive: false }).addTo(this.map) : undefined;
+    });
   }
 
-  protected onWheel(event: WheelEvent): void {
-    event.preventDefault();
-    const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
-    this.zoom(event.deltaY > 0 ? 1.15 : 1 / 1.15, (event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+  protected toggleLandmark(type: LandmarkType): void {
+    this.activeLayers.update((set) => {
+      const next = new Set(set);
+      if (!next.delete(type)) next.add(type);
+      return next;
+    });
   }
 
-  protected zoom(factor: number, fx = 0.5, fy = 0.5): void {
-    const v = this.view();
-    const h = (v.w * HEIGHT) / WIDTH;
-    const w = Math.min(WIDTH * 1.2, Math.max(WIDTH / 8, v.w * factor));
-    const mx = v.x + fx * v.w;
-    const my = v.y + fy * h;
-    this.view.set({ x: mx - fx * w, y: my - fy * ((w * HEIGHT) / WIDTH), w });
-  }
-
-  protected onPointerDown(event: PointerEvent): void {
-    if (event.button !== 0) return;
-    this.drag = { startX: event.clientX, startY: event.clientY, view: this.view(), moved: false };
-  }
-
-  protected onPointerMove(event: PointerEvent): void {
-    if (!this.drag) return;
-    const dx = event.clientX - this.drag.startX;
-    const dy = event.clientY - this.drag.startY;
-    if (!this.drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    if (!this.drag.moved) (event.currentTarget as SVGSVGElement).setPointerCapture(event.pointerId);
-    this.drag.moved = true;
-    const rect = (event.currentTarget as SVGSVGElement).getBoundingClientRect();
-    const scale = this.drag.view.w / rect.width;
-    this.view.set({ ...this.drag.view, x: this.drag.view.x - dx * scale, y: this.drag.view.y - dy * scale });
-  }
-
-  protected onPointerUp(): void {
-    this.suppressClick = !!this.drag?.moved;
-    this.drag = null;
-  }
-
-  protected onCellClick(cell: MapCell): void {
-    if (this.suppressClick) {
-      this.suppressClick = false;
-      return;
-    }
-    this.selected.set(cell);
+  protected reset(): void {
+    this.selected.set(null);
+    this.searchError.set(false);
+    this.map.fitBounds(this.imageBounds());
   }
 
   protected search(value: string): void {
     const match = value.match(/^\s*\[?\s*(-?\d+)\s*[,; ]\s*(-?\d+)\s*\]?\s*$/);
-    const cell = match && CELLS.find((c) => c.x === +match[1] && c.y === +match[2]);
-    this.searchError.set(!cell);
-    if (cell) {
-      this.selected.set(cell);
-      this.centerOn(cell.px + CELL / 2, cell.py + CELL / 2, 3);
+    const landmark = !match && value.trim() ? LANDMARKS.find((l) => l.name.toLowerCase().includes(value.trim().toLowerCase())) : undefined;
+    const cell = match ? { x: +match[1], y: +match[2] } : landmark;
+    const valid = !!cell && inBounds(cell);
+    this.searchError.set(!valid);
+    if (valid) this.focus(cell!.x, cell!.y);
+  }
+
+  protected centerOnPlayer(): void {
+    const { x, y } = this.player.position();
+    this.focus(x, y);
+  }
+
+  protected travel(x: number, y: number): void {
+    if (this.player.travel(x, y)) this.router.navigate(['/carte']);
+  }
+
+  private focus(x: number, y: number): void {
+    this.selected.set({ x, y });
+    this.map.flyTo(this.cellCenter(x, y), CFG.maxNativeZoom, { duration: 0.6 });
+  }
+
+  // --- Leaflet -------------------------------------------------------------
+
+  private init(): void {
+    this.map = L.map(this.mapEl().nativeElement, {
+      crs: L.CRS.Simple,
+      minZoom: 0,
+      maxZoom: CFG.maxNativeZoom + 2,
+      zoomSnap: 0.25,
+      preferCanvas: true,
+      attributionControl: false,
+    });
+
+    const bounds = this.imageBounds();
+    this.map.setMaxBounds(bounds.pad(0.25));
+
+    if (CFG.tileUrl) {
+      L.tileLayer(CFG.tileUrl, { bounds, noWrap: true, maxNativeZoom: CFG.maxNativeZoom, minZoom: 0 }).addTo(this.map);
+    } else {
+      this.drawMockWorld();
+    }
+
+    this.drawGrid();
+    this.drawLandmarks();
+
+    this.playerMarker = L.marker([0, 0], {
+      icon: L.divIcon({ className: 'player-pin', html: '<span></span>', iconSize: [18, 18] }),
+      interactive: false,
+      zIndexOffset: 1000,
+    }).addTo(this.map);
+
+    this.map.on('mousemove', (e: L.LeafletMouseEvent) => {
+      const cell = this.latLngToCell(e.latlng);
+      const prev = this.hovered();
+      if (!inBounds(cell)) this.hovered.set(null);
+      else if (!prev || prev.x !== cell.x || prev.y !== cell.y) this.hovered.set(cell);
+    });
+    this.map.on('mouseout', () => this.hovered.set(null));
+    this.map.on('click', (e: L.LeafletMouseEvent) => {
+      const cell = this.latLngToCell(e.latlng);
+      this.selected.set(inBounds(cell) ? cell : null);
+    });
+
+    this.map.fitBounds(bounds);
+    const { x, y } = this.player.position();
+    this.map.setView(this.cellCenter(x, y), 1.5);
+    this.ready.set(true);
+  }
+
+  private drawMockWorld(): void {
+    const { minX, maxX, minY, maxY } = CFG.bounds;
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const zone = zoneAt(x, y);
+        if (zone) {
+          L.rectangle(this.cellBounds(x, y), { stroke: false, fillColor: zone.color, fillOpacity: 1, interactive: false }).addTo(this.map);
+        }
+      }
+    }
+    for (const zone of ZONES) {
+      const [x1, y1, x2, y2] = zone.rects[0];
+      L.marker(this.cellCenter((x1 + x2) / 2, (y1 + y2) / 2), {
+        icon: L.divIcon({ className: 'zone-label', html: zone.name, iconSize: [160, 20] }),
+        interactive: false,
+      }).addTo(this.map);
     }
   }
 
-  protected focusZone(zone: Zone): void {
-    const label = ZONE_LABELS.find((l) => l.zone === zone)!;
-    this.centerOn(label.px, label.py, 1.6);
+  private drawGrid(): void {
+    const { minX, maxX, minY, maxY } = CFG.bounds;
+    const style: L.PolylineOptions = { color: '#24180c', weight: 1, opacity: 0.25, interactive: false };
+    for (let x = minX; x <= maxX + 1; x++) {
+      L.polyline([this.pxToLatLng(cellToPx(x, minY)), this.pxToLatLng(cellToPx(x, maxY + 1))], style).addTo(this.gridLayer);
+    }
+    for (let y = minY; y <= maxY + 1; y++) {
+      L.polyline([this.pxToLatLng(cellToPx(minX, y)), this.pxToLatLng(cellToPx(maxX + 1, y))], style).addTo(this.gridLayer);
+    }
   }
 
-  protected centerOnPlayer(zoom = this.zoomLevel() / 100): void {
-    const { px, py } = this.playerPx();
-    this.centerOn(px, py, zoom);
+  private drawLandmarks(): void {
+    for (const l of LANDMARKS) {
+      L.marker(this.cellCenter(l.x, l.y), {
+        icon: L.divIcon({ className: `landmark landmark-${l.type}`, html: LANDMARK_TYPES[l.type].icon, iconSize: [26, 26] }),
+      })
+        .bindTooltip(`${l.name} [${l.x}, ${l.y}]`, { direction: 'top', offset: [0, -12] })
+        .on('click', () => this.selected.set({ x: l.x, y: l.y }))
+        .addTo(this.landmarkLayers[l.type]);
+    }
   }
 
-  protected resetView(): void {
-    this.view.set({ x: 0, y: 0, w: WIDTH });
+  private toggleLayer(layer: L.Layer, visible: boolean): void {
+    if (visible && !this.map.hasLayer(layer)) layer.addTo(this.map);
+    if (!visible && this.map.hasLayer(layer)) layer.remove();
   }
 
-  protected travel(cell: MapCell): void {
-    if (this.player.travel(cell.x, cell.y)) this.router.navigate(['/carte']);
+  private pxToLatLng({ px, py }: { px: number; py: number }): L.LatLng {
+    return this.map.unproject([px, py], CFG.maxNativeZoom);
   }
 
-  private centerOn(px: number, py: number, zoom: number): void {
-    const w = WIDTH / zoom;
-    this.view.set({ x: px - w / 2, y: py - (w * HEIGHT) / WIDTH / 2, w });
+  private latLngToCell(latlng: L.LatLng): Coord {
+    const p = this.map.project(latlng, CFG.maxNativeZoom);
+    return pxToCell(p.x, p.y);
+  }
+
+  private cellCenter(x: number, y: number): L.LatLng {
+    const { px, py } = cellToPx(x, y);
+    return this.pxToLatLng({ px: px + CFG.cell.width / 2, py: py + CFG.cell.height / 2 });
+  }
+
+  private cellBounds(x: number, y: number): L.LatLngBounds {
+    return L.latLngBounds(this.pxToLatLng(cellToPx(x, y)), this.pxToLatLng(cellToPx(x + 1, y + 1)));
+  }
+
+  private imageBounds(): L.LatLngBounds {
+    return L.latLngBounds(this.pxToLatLng({ px: 0, py: CFG.height }), this.pxToLatLng({ px: CFG.width, py: 0 }));
   }
 }
