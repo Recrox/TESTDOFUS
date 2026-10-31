@@ -65,6 +65,10 @@
     cursor: default;
     opacity: 0.45;
   }
+
+  &.missing {
+    opacity: 0.55;
+  }
 }
 
 .slot-icon {

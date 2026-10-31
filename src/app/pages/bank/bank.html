@@ -10,6 +10,16 @@
         <button class="chip" [class.active]="category() === cat" (click)="category.set(cat)">{{ cat }}</button>
       }
     </div>
+    <div class="chips">
+      <button class="chip" [class.active]="!showAll()" (click)="showAll.set(false)">🏦 En banque</button>
+      <button class="chip" [class.active]="showAll()" (click)="showAll.set(true)">📚 Tout le catalogue ({{ catalogSize }})</button>
+      <select class="input" [value]="type()" (change)="type.set($any($event.target).value)">
+        <option value="">Tous les types</option>
+        @for (t of types; track t) {
+          <option [value]="t">{{ t }}</option>
+        }
+      </select>
+    </div>
     <input
       class="input"
       type="search"
@@ -25,11 +35,14 @@
         <button
           class="slot"
           [class.selected]="selectedId() === entry.item.id"
+          [class.missing]="!entry.quantity"
           [title]="entry.item.name"
           (click)="selectedId.set(entry.item.id)"
         >
           <span class="slot-icon">{{ entry.item.icon }}</span>
-          <span class="slot-qty">{{ entry.quantity }}</span>
+          @if (entry.quantity) {
+            <span class="slot-qty">{{ entry.quantity }}</span>
+          }
         </button>
       }
       @for (_ of emptySlots(); track $index) {
@@ -43,7 +56,10 @@
           <span class="details-icon">{{ sel.item.icon }}</span>
           <div>
             <h2>{{ sel.item.name }}</h2>
-            <span class="meta">{{ sel.item.category }} · Niv. {{ sel.item.level }}</span>
+            <span class="meta">
+              {{ sel.item.category }}{{ sel.item.type ? ' · ' + sel.item.type : '' }} · Niv. {{ sel.item.level }}
+              {{ sel.item.pods ? ' · ' + sel.item.pods + ' pods' : '' }}
+            </span>
           </div>
         </div>
         <p class="desc">{{ sel.item.description }}</p>
