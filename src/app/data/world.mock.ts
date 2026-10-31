@@ -52,6 +52,9 @@ const BIOMES: Record<Biome, BiomeConfig> = {
   marais: { tree: 0.05, rock: 0.01, ponds: 4, resources: { n: 0.08 } },
   mine: { tree: 0.01, rock: 0.16, ponds: 0, resources: { o: 0.07 } },
   cote: { tree: 0.02, rock: 0.04, ponds: 2, resources: { n: 0.02, b: 0.02 } },
+  desert: { tree: 0.01, rock: 0.08, ponds: 0, resources: { o: 0.03 } },
+  neige: { tree: 0.12, rock: 0.04, ponds: 2, resources: { f: 0.04 } },
+  lave: { tree: 0, rock: 0.18, ponds: 0, resources: { o: 0.09 } },
 };
 
 export function biomeResources(biome: Biome): ResourceSpec[] {

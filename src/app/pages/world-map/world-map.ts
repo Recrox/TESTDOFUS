@@ -168,6 +168,7 @@ export class WorldMap {
       this.drawMockWorld();
     }
 
+    this.drawZoneLabels();
     this.drawGrid();
     this.drawLandmarks();
 
@@ -191,7 +192,7 @@ export class WorldMap {
 
     this.map.fitBounds(bounds);
     const { x, y } = this.player.position();
-    this.map.setView(this.cellCenter(x, y), 1.5);
+    this.map.setView(this.cellCenter(x, y), CFG.maxNativeZoom - 2);
     this.ready.set(true);
   }
 
@@ -205,6 +206,9 @@ export class WorldMap {
         }
       }
     }
+  }
+
+  private drawZoneLabels(): void {
     for (const zone of ZONES) {
       const [x1, y1, x2, y2] = zone.rects[0];
       L.marker(this.cellCenter((x1 + x2) / 2, (y1 + y2) / 2), {

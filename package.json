@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "tiles": "node scripts/build-tiles.mjs"
+    "tiles": "node scripts/build-tiles.mjs",
+    "land-mask": "node scripts/build-land-mask.mjs"
   },
   "prettier": {
     "printWidth": 100,

@@ -19,15 +19,18 @@ export interface MapConfig {
   bounds: { minX: number; maxX: number; minY: number; maxY: number };
 }
 
-const MOCK_CELL = 64;
-
-/** Configuration par défaut : monde mock dessiné en vectoriel, sans image. */
+/**
+ * Carte du monde tirée de `maps/carte-monde.jpg` :
+ *   npm run tiles -- maps/carte-monde.jpg public/map-tiles webp
+ *   npm run land-mask -- maps/carte-monde.jpg 80 60 3685 2296
+ * La case [0, 0] est la Cité des Remparts, au centre-est du continent.
+ */
 export const MAP_CONFIG: MapConfig = {
-  tileUrl: null,
-  width: (WORLD_BOUNDS.maxX - WORLD_BOUNDS.minX + 1) * MOCK_CELL,
-  height: (WORLD_BOUNDS.maxY - WORLD_BOUNDS.minY + 1) * MOCK_CELL,
-  maxNativeZoom: 3,
-  cell: { width: MOCK_CELL, height: MOCK_CELL },
-  origin: { x: -WORLD_BOUNDS.minX * MOCK_CELL, y: -WORLD_BOUNDS.minY * MOCK_CELL },
+  tileUrl: 'map-tiles/{z}/{x}/{y}.webp',
+  width: 5359,
+  height: 3869,
+  maxNativeZoom: 5,
+  cell: { width: 80, height: 60 },
+  origin: { x: 3685, y: 2296 },
   bounds: WORLD_BOUNDS,
 };
