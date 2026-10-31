@@ -1,31 +1,36 @@
-import { Item } from '../models/item.model';
+import { Item, ItemCategory } from '../models/item.model';
+import data from '../../../ressources.json';
+
+/** Icône par type de ressource (ressources.json → `typeName`). */
+const TYPE_ICONS: Record<string, string> = {
+  'Pierre précieuse': '💎', 'Pierre brute': '🪨', Aile: '🪽', Alliage: '🔩', Minerai: '⛏️', Fruit: '🍎', Céréale: '🌾',
+  Poil: '🧶', Poisson: '🐟', 'Poisson vidé': '🍣', Os: '🦴', Poudre: '🧂', "Matériel d'alchimie": '⚗️', Bois: '🪵',
+  Bourgeon: '🌱', Gelée: '🍮', Plante: '🌿', Carapace: '🐚', Viande: '🍖', 'Viande conservée': '🥓', Légume: '🥕',
+  Clefs: '🗝️', Fleur: '🌸', Coquille: '🐚', Cuir: '🟤', Peau: '🟫', Ecorce: '🪵', Etoffe: '🧵', 'Fantôme de Familier': '👻',
+  Farine: '🥣', Graine: '🌰', Huile: '🫗', Laine: '🐑', Metaria: '🔮', Oeil: '👁️', Oeuf: '🥚', Oreille: '👂', Patte: '🐾',
+  Peluche: '🧸', Planche: '📏', Plume: '🪶', 'Potion de forgemagie': '🧪', Queue: '〰️', Racine: '🫚', 'Rune de forgemagie': '🔣',
+};
+
+/** Types fabriqués à partir d'autres ressources. */
+const INTERMEDIATE_TYPES = new Set(['Alliage', 'Planche', 'Farine', 'Etoffe', 'Huile']);
+
+/** Toutes les ressources de ressources.json, identifiées par leur slug. */
+const RESOURCES: Item[] = data.resources.map((r) => ({
+  id: r.slug,
+  name: r.name,
+  icon: TYPE_ICONS[r.typeName] ?? '📦',
+  category: (INTERMEDIATE_TYPES.has(r.typeName) ? 'Intermédiaire' : 'Ressource') satisfies ItemCategory,
+  level: r.level,
+  description: r.description,
+  type: r.typeName,
+  pods: r.pods,
+}));
 
 export const ITEMS: Item[] = [
-  // Ressources
-  { id: 'ble', name: 'Blé', icon: '🌾', category: 'Ressource', level: 1, description: 'Une céréale dorée récoltée par les paysans d’Astrub.' },
-  { id: 'orge', name: 'Orge', icon: '🌾', category: 'Ressource', level: 10, description: 'Céréale robuste, idéale pour le pain et la bière.' },
-  { id: 'houblon', name: 'Houblon', icon: '🌿', category: 'Ressource', level: 20, description: 'Plante grimpante appréciée des Bworks brasseurs.' },
-  { id: 'eau', name: 'Eau Potable', icon: '💧', category: 'Ressource', level: 1, description: 'Une eau limpide puisée au puits du village.' },
-  { id: 'sel', name: 'Sel', icon: '🧂', category: 'Ressource', level: 5, description: 'Récupéré sur les côtes de l’île de Moon.' },
-  { id: 'frene', name: 'Bois de Frêne', icon: '🪵', category: 'Ressource', level: 1, description: 'Un bois souple et léger.' },
-  { id: 'chene', name: 'Bois de Chêne', icon: '🪵', category: 'Ressource', level: 30, description: 'Un bois dur et noble.' },
-  { id: 'fer', name: 'Minerai de Fer', icon: '⛏️', category: 'Ressource', level: 1, description: 'Le minerai le plus commun des mines d’Amakna.' },
-  { id: 'cuivre', name: 'Minerai de Cuivre', icon: '🟠', category: 'Ressource', level: 20, description: 'Un minerai rougeâtre et malléable.' },
-  { id: 'laine_bouftou', name: 'Laine de Bouftou', icon: '🐑', category: 'Ressource', level: 1, description: 'Une laine épaisse et bouclée.' },
-  { id: 'cuir_bouftou', name: 'Cuir de Bouftou', icon: '🟤', category: 'Ressource', level: 5, description: 'Un cuir résistant, prisé des tailleurs.' },
-  { id: 'laine_royale', name: 'Laine du Bouftou Royal', icon: '👑', category: 'Ressource', level: 40, description: 'Une laine rarissime, digne d’un roi.' },
-  { id: 'plume_tofu', name: 'Plume de Tofu', icon: '🪶', category: 'Ressource', level: 1, description: 'Légère comme l’air, jaune comme le soleil.' },
-  { id: 'gelee_fraise', name: 'Gelée Fraise', icon: '🍓', category: 'Ressource', level: 15, description: 'Un résidu sucré et collant.' },
-  { id: 'ortie', name: 'Ortie', icon: '🌱', category: 'Ressource', level: 1, description: 'Pique un peu, soigne beaucoup.' },
-  { id: 'sauge', name: 'Sauge', icon: '🍃', category: 'Ressource', level: 10, description: 'Une herbe aux vertus apaisantes.' },
-  { id: 'trefle', name: 'Trèfle à 5 Feuilles', icon: '🍀', category: 'Ressource', level: 20, description: 'Porte bonheur, paraît-il.' },
-  { id: 'goujon', name: 'Goujon', icon: '🐟', category: 'Ressource', level: 1, description: 'Petit poisson des rivières.' },
-  { id: 'patte_arakne', name: "Patte d'Arakne", icon: '🕷️', category: 'Ressource', level: 5, description: 'Encore un peu gigotante...' },
+  ...RESOURCES,
 
   // Intermédiaires
-  { id: 'planche_frene', name: 'Planche de Frêne', icon: '📏', category: 'Intermédiaire', level: 1, description: 'Une planche bien rabotée.' },
   { id: 'ferrite', name: 'Ferrite', icon: '🔩', category: 'Intermédiaire', level: 5, description: 'Un alliage de fer purifié.' },
-  { id: 'bronze', name: 'Bronze', icon: '🥉', category: 'Intermédiaire', level: 20, description: 'Alliage brillant de cuivre et de fer.' },
 
   // Consommables
   { id: 'pain_incarnam', name: "Pain d'Incarnam", icon: '🍞', category: 'Consommable', level: 1, description: 'Rend 20 points de vie.' },

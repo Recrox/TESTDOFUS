@@ -1,3 +1,4 @@
+import { ITEMS_BY_ID } from './items.mock';
 import { Biome } from './zones.mock';
 
 export type TileKind = 'grass' | 'path' | 'water' | 'tree' | 'rock' | 'resource';
@@ -11,12 +12,33 @@ export interface ResourceSpec {
   respawnMs: number;
 }
 
+/** Récolte d'une ressource de ressources.json ; le temps de repousse croît avec son niveau. */
+function harvest(itemId: string, icon: string, baseMs: number): ResourceSpec {
+  const item = ITEMS_BY_ID[itemId];
+  return { itemId, icon, label: item.name, respawnMs: baseMs + item.level * 200 };
+}
+
 /** Ressources récoltables, indexées par leur caractère dans la carte. */
 export const RESOURCE_SPECS: Record<string, ResourceSpec> = {
-  b: { itemId: 'ble', icon: '🌾', label: 'Blé', respawnMs: 8000 },
-  f: { itemId: 'frene', icon: '🌲', label: 'Frêne', respawnMs: 12000 },
-  o: { itemId: 'fer', icon: '⛏️', label: 'Fer', respawnMs: 15000 },
-  n: { itemId: 'ortie', icon: '🌱', label: 'Ortie', respawnMs: 6000 },
+  // Paysan
+  b: harvest('ble', '🌾', 8000),
+  g: harvest('orge', '🌾', 8000),
+  h: harvest('houblon', '🌿', 8000),
+  l: harvest('lin', '💠', 8000),
+  // Bûcheron
+  f: harvest('bois-de-frene', '🌲', 12000),
+  c: harvest('bois-de-chataignier', '🌳', 12000),
+  k: harvest('bois-de-noyer', '🌳', 12000),
+  q: harvest('bois-de-chene', '🌳', 12000),
+  // Mineur
+  o: harvest('fer', '⛏️', 15000),
+  u: harvest('cuivre', '🟠', 15000),
+  z: harvest('bronze', '🟤', 15000),
+  e: harvest('etain', '⚪', 15000),
+  // Alchimiste
+  n: harvest('orties', '🌱', 6000),
+  t: harvest('trefle-a-5-feuilles', '🍀', 6000),
+  m: harvest('feuille-de-menthe-sauvage', '🍃', 6000),
 };
 
 export const MAP_SIZE = 14;
@@ -47,14 +69,14 @@ interface BiomeConfig {
 
 const BIOMES: Record<Biome, BiomeConfig> = {
   village: { tree: 0.02, rock: 0.01, ponds: 0, resources: { b: 0.02 } },
-  plaine: { tree: 0.04, rock: 0.02, ponds: 1, resources: { b: 0.08, n: 0.02 } },
-  foret: { tree: 0.2, rock: 0.02, ponds: 0, resources: { f: 0.07, n: 0.03 } },
-  marais: { tree: 0.05, rock: 0.01, ponds: 4, resources: { n: 0.08 } },
-  mine: { tree: 0.01, rock: 0.16, ponds: 0, resources: { o: 0.07 } },
-  cote: { tree: 0.02, rock: 0.04, ponds: 2, resources: { n: 0.02, b: 0.02 } },
-  desert: { tree: 0.01, rock: 0.08, ponds: 0, resources: { o: 0.03 } },
-  neige: { tree: 0.12, rock: 0.04, ponds: 2, resources: { f: 0.04 } },
-  lave: { tree: 0, rock: 0.18, ponds: 0, resources: { o: 0.09 } },
+  plaine: { tree: 0.04, rock: 0.02, ponds: 1, resources: { b: 0.05, g: 0.03, h: 0.015, n: 0.02 } },
+  foret: { tree: 0.2, rock: 0.02, ponds: 0, resources: { f: 0.04, c: 0.025, k: 0.015, q: 0.01, n: 0.02 } },
+  marais: { tree: 0.05, rock: 0.01, ponds: 4, resources: { n: 0.05, t: 0.02, m: 0.02 } },
+  mine: { tree: 0.01, rock: 0.16, ponds: 0, resources: { o: 0.04, u: 0.025, z: 0.015 } },
+  cote: { tree: 0.02, rock: 0.04, ponds: 2, resources: { n: 0.02, b: 0.02, l: 0.02 } },
+  desert: { tree: 0.01, rock: 0.08, ponds: 0, resources: { o: 0.02, e: 0.01 } },
+  neige: { tree: 0.12, rock: 0.04, ponds: 2, resources: { f: 0.03, q: 0.02 } },
+  lave: { tree: 0, rock: 0.18, ponds: 0, resources: { o: 0.04, u: 0.03, e: 0.02 } },
 };
 
 export function biomeResources(biome: Biome): ResourceSpec[] {
@@ -74,7 +96,7 @@ export function createRng(x: number, y: number): () => number {
 
 /**
  * Génère la carte locale d'une coordonnée du monde.
- * Légende : `.` herbe · `p` chemin · `w` eau · `T` arbre · `R` rocher · `b`/`f`/`o`/`n` ressources
+ * Légende : `.` herbe · `p` chemin · `w` eau · `T` arbre · `R` rocher · autres lettres : ressources (voir RESOURCE_SPECS)
  */
 export function generateRows(x: number, y: number, biome: Biome, exits: Direction[]): string[] {
   const rng = createRng(x, y);

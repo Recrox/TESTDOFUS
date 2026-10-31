@@ -5,7 +5,7 @@ import { BankEntry } from '../models/item.model';
 
 export type Stock = Record<string, number>;
 
-const STORAGE_KEY = 'dofus-retro-bank-v1';
+const STORAGE_KEY = 'dofus-retro-bank-v2';
 
 function loadStock(): Stock {
   try {

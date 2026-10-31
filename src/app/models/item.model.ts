@@ -20,6 +20,9 @@ export interface Item {
   category: ItemCategory;
   level: number;
   description: string;
+  /** Type précis (ex. « Céréale », « Minerai »), pour les ressources de ressources.json. */
+  type?: string;
+  pods?: number;
 }
 
 export interface Ingredient {
