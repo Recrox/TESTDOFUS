@@ -1,0 +1,88 @@
+<section class="panel">
+  <header class="panel-title">
+    <span>🏦 Banque</span>
+    <span class="summary">{{ bank.entries().length }} types · {{ bank.totalItems() | number }} objets</span>
+  </header>
+
+  <div class="toolbar">
+    <div class="chips">
+      @for (cat of categories; track cat) {
+        <button class="chip" [class.active]="category() === cat" (click)="category.set(cat)">{{ cat }}</button>
+      }
+    </div>
+    <input
+      class="input"
+      type="search"
+      placeholder="Rechercher un objet…"
+      [value]="search()"
+      (input)="search.set($any($event.target).value)"
+    />
+  </div>
+
+  <div class="layout">
+    <div class="grid">
+      @for (entry of filtered(); track entry.item.id) {
+        <button
+          class="slot"
+          [class.selected]="selectedId() === entry.item.id"
+          [title]="entry.item.name"
+          (click)="selectedId.set(entry.item.id)"
+        >
+          <span class="slot-icon">{{ entry.item.icon }}</span>
+          <span class="slot-qty">{{ entry.quantity }}</span>
+        </button>
+      }
+      @for (_ of emptySlots(); track $index) {
+        <div class="slot empty"></div>
+      }
+    </div>
+
+    <aside class="details">
+      @if (selected(); as sel) {
+        <div class="details-head">
+          <span class="details-icon">{{ sel.item.icon }}</span>
+          <div>
+            <h2>{{ sel.item.name }}</h2>
+            <span class="meta">{{ sel.item.category }} · Niv. {{ sel.item.level }}</span>
+          </div>
+        </div>
+        <p class="desc">{{ sel.item.description }}</p>
+
+        <div class="qty-box">
+          <span>Quantité : <strong>{{ sel.quantity }}</strong></span>
+          <div class="qty-actions">
+            <button class="btn wood small" (click)="adjust(-10)">-10</button>
+            <button class="btn wood small" (click)="adjust(-1)">-1</button>
+            <button class="btn small" (click)="adjust(1)">+1</button>
+            <button class="btn small" (click)="adjust(10)">+10</button>
+          </div>
+        </div>
+
+        @if (producedBy(); as recipe) {
+          <h3>Fabrication ({{ recipe.profession }} niv. {{ recipe.level }})</h3>
+          <ul class="mini-list">
+            @for (ing of recipe.ingredients; track ing.itemId) {
+              <li>{{ ing.quantity }} × {{ itemName(ing.itemId) }}</li>
+            }
+          </ul>
+        }
+
+        @if (usedIn().length) {
+          <h3>Utilisé dans</h3>
+          <div class="used-in">
+            @for (res of usedIn(); track res.id) {
+              <a class="tag" routerLink="/atelier" [queryParams]="{ q: res.name }">{{ res.icon }} {{ res.name }}</a>
+            }
+          </div>
+        }
+      } @else {
+        <p class="placeholder">Sélectionne un objet pour voir ses détails et les recettes qui l’utilisent.</p>
+      }
+    </aside>
+  </div>
+
+  <footer class="bank-footer">
+    <button class="btn wood" (click)="reset()">↺ Réinitialiser la banque (mock)</button>
+    <a class="btn" routerLink="/atelier">🔨 {{ craft.craftable().length }} recettes réalisables avec cette banque</a>
+  </footer>
+</section>

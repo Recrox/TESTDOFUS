@@ -1,0 +1,27 @@
+<header class="topbar">
+  <a class="logo" routerLink="/">
+    <span class="logo-egg">🥚</span>
+    <span class="logo-text">DOFUS <small>Rétro</small></span>
+  </a>
+
+  <nav class="tabs">
+    <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Accueil</a>
+    <a routerLink="/banque" routerLinkActive="active">Banque</a>
+    <a routerLink="/atelier" routerLinkActive="active">
+      Atelier
+      @if (craft.craftable().length) {
+        <span class="badge">{{ craft.craftable().length }}</span>
+      }
+    </a>
+  </nav>
+
+  <div class="kamas" title="Kamas">
+    <span class="kama-coin">K</span>{{ bank.kamas() | number: '1.0-0' : 'fr' }}
+  </div>
+</header>
+
+<main class="page">
+  <router-outlet />
+</main>
+
+<footer class="footer">Projet fan non officiel · données de test (mock)</footer>

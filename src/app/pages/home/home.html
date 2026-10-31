@@ -1,0 +1,57 @@
+<section class="hero panel">
+  <div class="hero-text">
+    <h1>Bienvenue, aventurier !</h1>
+    <p>
+      Le Monde des Douze t’attend. Range tes ressources dans ta <strong>banque</strong>,
+      puis file à l’<strong>atelier</strong> découvrir tout ce que tu peux fabriquer avec.
+    </p>
+    <div class="hero-actions">
+      <a class="btn" routerLink="/banque">🏦 Ouvrir la banque</a>
+      <a class="btn wood" routerLink="/atelier">🔨 Voir les recettes</a>
+    </div>
+  </div>
+  <div class="hero-art" aria-hidden="true">
+    <span class="egg">🥚</span>
+    <span class="orbit o1">🐑</span>
+    <span class="orbit o2">🪶</span>
+    <span class="orbit o3">🌾</span>
+  </div>
+</section>
+
+<section class="stats">
+  <div class="stat panel">
+    <span class="stat-icon">🎒</span>
+    <span class="stat-value">{{ bank.entries().length }}</span>
+    <span class="stat-label">types d’objets</span>
+  </div>
+  <div class="stat panel">
+    <span class="stat-icon">📦</span>
+    <span class="stat-value">{{ bank.totalItems() | number }}</span>
+    <span class="stat-label">objets en banque</span>
+  </div>
+  <div class="stat panel">
+    <span class="stat-icon">🔨</span>
+    <span class="stat-value">{{ craft.craftable().length }}</span>
+    <span class="stat-label">recettes réalisables</span>
+  </div>
+  <div class="stat panel">
+    <span class="stat-icon">⏳</span>
+    <span class="stat-value">{{ craft.almost().length }}</span>
+    <span class="stat-label">presque réalisables</span>
+  </div>
+</section>
+
+<section class="panel preview">
+  <header class="panel-title">À fabriquer dès maintenant</header>
+  <div class="preview-list">
+    @for (s of craft.craftable().slice(0, 6); track s.recipe.id) {
+      <a class="preview-item" routerLink="/atelier" [queryParams]="{ q: s.result.name }">
+        <span class="icon">{{ s.result.icon }}</span>
+        <span class="name">{{ s.result.name }}</span>
+        <span class="count">×{{ s.maxCrafts }}</span>
+      </a>
+    } @empty {
+      <p class="empty">Rien à fabriquer pour l’instant… va farmer quelques Bouftous !</p>
+    }
+  </div>
+</section>
