@@ -1,0 +1,97 @@
+<section class="panel">
+  <header class="panel-title">
+    <span>🌍 Carte du monde</span>
+    <span class="coords">Position : [{{ player.position().x }}, {{ player.position().y }}]</span>
+  </header>
+
+  <div class="toolbar">
+    <form class="search" (submit)="$event.preventDefault(); search(coordInput.value)">
+      <input #coordInput class="input" [class.error]="searchError()" placeholder="Coordonnées, ex : -5,3" />
+      <button class="btn small" type="submit">🔍 Aller</button>
+    </form>
+    <div class="view-actions">
+      <button class="btn small wood" (click)="zoom(1 / 1.3)">＋</button>
+      <span class="zoom">{{ zoomLevel() }}%</span>
+      <button class="btn small wood" (click)="zoom(1.3)">－</button>
+      <button class="btn small wood" (click)="centerOnPlayer()">📍 Ma position</button>
+      <button class="btn small wood" (click)="resetView()">⤢ Tout voir</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="map-frame">
+      <svg
+        class="map"
+        [style.aspect-ratio]="aspect"
+        [attr.viewBox]="viewBox()"
+        (wheel)="onWheel($event)"
+        (pointerdown)="onPointerDown($event)"
+        (pointermove)="onPointerMove($event)"
+        (pointerup)="onPointerUp()"
+        (pointercancel)="onPointerUp()"
+        (mouseleave)="hovered.set(null)"
+      >
+        @for (c of cells; track c.px + '-' + c.py) {
+          <rect
+            class="cell"
+            [class.selected]="selected() === c"
+            [attr.x]="c.px"
+            [attr.y]="c.py"
+            [attr.width]="cell"
+            [attr.height]="cell"
+            [attr.fill]="c.zone.color"
+            (mouseenter)="hovered.set(c)"
+            (click)="onCellClick(c)"
+          />
+        }
+
+        @for (l of zoneLabels; track l.zone.id) {
+          <text class="zone-label" [attr.x]="l.px" [attr.y]="l.py">{{ l.zone.name }}</text>
+        }
+
+        <g class="player-marker" [attr.transform]="'translate(' + playerPx().px + ',' + playerPx().py + ')'">
+          <circle class="pulse" r="10" />
+          <circle class="dot" r="6" />
+        </g>
+      </svg>
+
+      @if (hovered(); as h) {
+        <div class="tooltip">
+          <strong>[{{ h.x }}, {{ h.y }}]</strong> {{ h.zone.name }}
+        </div>
+      }
+    </div>
+
+    <aside class="side">
+      @if (selectedInfo(); as s) {
+        <div class="selection">
+          <h3>[{{ s.x }}, {{ s.y }}]</h3>
+          <p class="zone-name" [style.border-color]="s.zone.color">{{ s.zone.name }}</p>
+          <p class="meta">Ressources : {{ s.resources.length ? '' : 'aucune' }}
+            @for (r of s.resources; track r.itemId) {
+              <span title="{{ r.label }}">{{ r.icon }} {{ r.label }}</span>
+            }
+          </p>
+          @if (s.isHere) {
+            <p class="meta">📍 Tu es ici.</p>
+          } @else {
+            <p class="meta">Distance : {{ s.distance }} carte{{ s.distance > 1 ? 's' : '' }}</p>
+          }
+          <button class="btn" (click)="travel(s)">🧭 {{ s.isHere ? 'Explorer cette carte' : 'Voyager ici' }}</button>
+        </div>
+      } @else {
+        <p class="placeholder">Clique sur une case pour voir ses infos et y voyager. Fais glisser pour te déplacer, molette pour zoomer.</p>
+      }
+
+      <h3>Zones</h3>
+      <ul class="legend">
+        @for (z of zoneLabels; track z.zone.id) {
+          <li (click)="focusZone(z.zone)">
+            <span class="swatch" [style.background]="z.zone.color"></span>
+            {{ z.zone.name }}
+          </li>
+        }
+      </ul>
+    </aside>
+  </div>
+</section>

@@ -1,6 +1,6 @@
 <section class="panel">
   <header class="panel-title">
-    <span>🗺️ {{ mapName }}</span>
+    <span>🗺️ {{ level().zone.name }}</span>
     <span class="coords">{{ coords() }}</span>
   </header>
 
@@ -8,10 +8,10 @@
     <div class="map-frame">
       <svg class="map" [attr.viewBox]="viewBox" (mouseleave)="hovered.set(null)">
         <g>
-          @for (t of tiles; track t.key) {
+          @for (t of level().flat; track t.key) {
             <polygon
               [attr.points]="t.points"
-              [class]="'tile ' + t.kind + ((t.r + t.c) % 2 ? ' alt' : '')"
+              [class]="'tile ' + t.kind + ((t.r + t.c) % 2 ? ' alt' : '') + (t.exit ? ' exit' : '')"
               [class.hover]="hovered() === t"
               (mouseenter)="hovered.set(t)"
               (click)="onTileClick(t)"
@@ -76,11 +76,21 @@
     </div>
 
     <aside class="hud">
+      <h3>Changer de carte</h3>
+      <div class="exits">
+        @for (d of directions; track d.dir) {
+          <button class="btn small wood" [class]="'exit-' + d.dir" [disabled]="!level().exits.includes(d.dir)" (click)="changeMap(d.dir)">
+            {{ d.label }}
+          </button>
+        }
+      </div>
+
       <h3>Contrôles</h3>
       <ul class="help">
         <li>🖱️ Clique sur une case pour t’y déplacer</li>
         <li>⌨️ Flèches ou Z Q S D pour bouger</li>
         <li>🌾 Clique sur une ressource pour la récolter</li>
+        <li>✨ Marche sur une case dorée en bord de carte pour changer de carte</li>
       </ul>
 
       <h3>Ressources en banque</h3>
@@ -103,6 +113,7 @@
       </ul>
 
       <div class="hud-actions">
+        <a class="btn small wood" routerLink="/monde">🌍 Monde</a>
         <a class="btn small wood" routerLink="/banque">🏦 Banque</a>
         <a class="btn small" routerLink="/atelier">🔨 Atelier</a>
       </div>

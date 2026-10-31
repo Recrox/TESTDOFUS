@@ -1,29 +1,12 @@
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ITEMS_BY_ID } from '../../data/items.mock';
-import { RESOURCE_SPECS, ResourceSpec, TileKind, WORLD_MAP } from '../../data/world.mock';
+import { DIRECTIONS, DIR_DELTA, Direction, EXIT_CELLS, MAP_SIZE, OPPOSITE, RESOURCE_SPECS } from '../../data/world.mock';
 import { BankService } from '../../services/bank.service';
+import { PlayerService } from '../../services/player.service';
+import { Cell, HALF_H, HALF_W, TOP_PAD, Tile, buildLevel, toScreen } from './level';
 
-const HALF_W = 32;
-const HALF_H = 16;
-const TOP_PAD = 60;
 const STEP_MS = 200;
-const ROWS = WORLD_MAP.rows.length;
-const COLS = WORLD_MAP.rows[0].length;
-
-interface Cell {
-  r: number;
-  c: number;
-}
-
-interface Tile extends Cell {
-  key: string;
-  kind: TileKind;
-  x: number;
-  y: number;
-  points: string;
-  resource?: ResourceSpec;
-}
 
 interface Entity {
   key: string;
@@ -44,11 +27,6 @@ interface FloatingText {
   text: string;
 }
 
-const DIRS: Cell[] = [
-  { r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 },
-  { r: -1, c: -1 }, { r: -1, c: 1 }, { r: 1, c: -1 }, { r: 1, c: 1 },
-];
-
 const KEY_DIRS: Record<string, Cell> = {
   ArrowUp: { r: -1, c: -1 }, z: { r: -1, c: -1 },
   ArrowDown: { r: 1, c: 1 }, s: { r: 1, c: 1 },
@@ -56,78 +34,7 @@ const KEY_DIRS: Record<string, Cell> = {
   ArrowRight: { r: -1, c: 1 }, d: { r: -1, c: 1 },
 };
 
-function toScreen(r: number, c: number) {
-  return { x: (c - r) * HALF_W + ROWS * HALF_W, y: (c + r) * HALF_H + TOP_PAD };
-}
-
-function parseKind(ch: string): TileKind {
-  if (RESOURCE_SPECS[ch]) return 'resource';
-  return ({ p: 'path', w: 'water', T: 'tree', R: 'rock' } as Record<string, TileKind>)[ch] ?? 'grass';
-}
-
-const TILES: Tile[][] = WORLD_MAP.rows.map((row, r) =>
-  [...row].map((ch, c) => {
-    const { x, y } = toScreen(r, c);
-    return {
-      r,
-      c,
-      key: `${r}-${c}`,
-      kind: parseKind(ch),
-      x,
-      y,
-      points: `${x},${y - HALF_H} ${x + HALF_W},${y} ${x},${y + HALF_H} ${x - HALF_W},${y}`,
-      resource: RESOURCE_SPECS[ch],
-    };
-  }),
-);
-
-function tileAt(r: number, c: number): Tile | undefined {
-  return TILES[r]?.[c];
-}
-
-function isWalkable(r: number, c: number): boolean {
-  const kind = tileAt(r, c)?.kind;
-  return kind === 'grass' || kind === 'path';
-}
-
-/** Voisins accessibles (8 directions, sans couper les coins). */
-function neighbours(cell: Cell): Cell[] {
-  return DIRS.map((d) => ({ r: cell.r + d.r, c: cell.c + d.c, diag: d.r !== 0 && d.c !== 0, d }))
-    .filter((n) => isWalkable(n.r, n.c) && (!n.diag || (isWalkable(cell.r + n.d.r, cell.c) && isWalkable(cell.r, cell.c + n.d.c))))
-    .map(({ r, c }) => ({ r, c }));
-}
-
-/** Dijkstra depuis `from` vers la case la plus proche parmi `targets`. */
-function findPath(from: Cell, targets: Cell[]): Cell[] | null {
-  const goal = new Set(targets.map((t) => `${t.r}-${t.c}`));
-  const startKey = `${from.r}-${from.c}`;
-  if (goal.has(startKey)) return [];
-
-  const dist = new Map<string, number>([[startKey, 0]]);
-  const prev = new Map<string, Cell>();
-  const open: Cell[] = [from];
-
-  while (open.length) {
-    open.sort((a, b) => dist.get(`${a.r}-${a.c}`)! - dist.get(`${b.r}-${b.c}`)!);
-    const cur = open.shift()!;
-    const curKey = `${cur.r}-${cur.c}`;
-    if (goal.has(curKey)) {
-      const path: Cell[] = [];
-      for (let k: Cell | undefined = cur; k && `${k.r}-${k.c}` !== startKey; k = prev.get(`${k.r}-${k.c}`)) path.unshift(k);
-      return path;
-    }
-    for (const n of neighbours(cur)) {
-      const nKey = `${n.r}-${n.c}`;
-      const cost = dist.get(curKey)! + (n.r !== cur.r && n.c !== cur.c ? 1.41 : 1);
-      if (cost < (dist.get(nKey) ?? Infinity)) {
-        dist.set(nKey, cost);
-        prev.set(nKey, cur);
-        if (!open.some((o) => o.r === n.r && o.c === n.c)) open.push(n);
-      }
-    }
-  }
-  return null;
-}
+const DIR_LABELS: Record<Direction, string> = { nord: '⬆ Nord', est: '➡ Est', sud: '⬇ Sud', ouest: '⬅ Ouest' };
 
 @Component({
   selector: 'app-world',
@@ -138,51 +45,54 @@ function findPath(from: Cell, targets: Cell[]): Cell[] | null {
 })
 export class World {
   private readonly bank = inject(BankService);
+  private readonly player = inject(PlayerService);
 
-  protected readonly mapName = WORLD_MAP.name;
-  protected readonly viewBox = `0 0 ${(ROWS + COLS) * HALF_W} ${(ROWS + COLS - 2) * HALF_H + TOP_PAD + 40}`;
-  protected readonly tiles = TILES.flat();
+  protected readonly level = computed(() => buildLevel(this.player.position().x, this.player.position().y));
+  protected readonly viewBox = `0 0 ${2 * MAP_SIZE * HALF_W} ${(2 * MAP_SIZE - 2) * HALF_H + TOP_PAD + 40}`;
   protected readonly resources = Object.values(RESOURCE_SPECS);
+  protected readonly directions = DIRECTIONS.map((d) => ({ dir: d, label: DIR_LABELS[d] }));
 
   /** Position animée (flottante) du personnage. */
-  protected readonly pos = signal<Cell>({ ...WORLD_MAP.start });
+  protected readonly pos = signal<Cell>({ r: 0, c: 0 });
   protected readonly facingLeft = signal(false);
   protected readonly moving = signal(false);
   protected readonly harvesting = signal(false);
   protected readonly hovered = signal<Tile | null>(null);
   protected readonly floating = signal<FloatingText[]>([]);
   protected readonly log = signal<string[]>([]);
-  protected readonly sheep = signal<Cell[]>([{ r: 7, c: 1 }, { r: 10, c: 9 }]);
+  protected readonly sheep = signal<Cell[]>([]);
 
   private readonly respawnAt = signal<Record<string, number>>({});
   private readonly now = signal(Date.now());
 
   /** Case logique : celle où le personnage sera à la fin du pas en cours. */
-  private tile: Cell = { ...WORLD_MAP.start };
+  private tile: Cell = { r: 0, c: 0 };
   private queue: Cell[] = [];
   private onArrive?: () => void;
   private raf = 0;
   private floatId = 0;
 
-  protected readonly coords = computed(() => `[${Math.round(this.pos().c)}, ${Math.round(this.pos().r)}]`);
+  protected readonly coords = computed(() => `[${this.level().x}, ${this.level().y}]`);
 
   protected readonly preview = computed(() => {
     const t = this.hovered();
+    const level = this.level();
     if (!t || this.moving()) return [];
-    const path = t.kind === 'resource' ? findPath(this.tile, neighbours(t)) : isWalkable(t.r, t.c) ? findPath(this.tile, [t]) : null;
+    const path = t.kind === 'resource' ? level.findPath(this.tile, level.neighbours(t)) : level.isWalkable(t.r, t.c) ? level.findPath(this.tile, [t]) : null;
     return (path ?? []).map((p) => toScreen(p.r, p.c));
   });
 
   protected readonly entities = computed<Entity[]>(() => {
+    const level = this.level();
     const now = this.now();
     const respawn = this.respawnAt();
     const list: Entity[] = [];
 
-    for (const t of this.tiles) {
+    for (const t of level.flat) {
       if (t.kind === 'tree' || t.kind === 'rock') {
         list.push({ key: t.key, type: t.kind, depth: t.r + t.c, x: t.x, y: t.y, icon: t.kind === 'tree' ? '🌳' : '🪨' });
       } else if (t.resource) {
-        const remaining = Math.max(0, (respawn[t.key] ?? 0) - now);
+        const remaining = Math.max(0, (respawn[`${level.id}:${t.key}`] ?? 0) - now);
         list.push({ key: t.key, type: 'resource', depth: t.r + t.c, x: t.x, y: t.y, icon: t.resource.icon, tile: t, depleted: remaining > 0, remaining: Math.ceil(remaining / 1000) });
       }
     }
@@ -205,6 +115,7 @@ export class World {
   });
 
   constructor() {
+    this.enterLevel();
     const clock = setInterval(() => this.now.set(Date.now()), 500);
     const sheepTimer = setInterval(() => this.wanderSheep(), 2200);
     inject(DestroyRef).onDestroy(() => {
@@ -216,30 +127,61 @@ export class World {
 
   protected onTileClick(t: Tile): void {
     if (this.harvesting()) return;
+    const level = this.level();
 
     if (t.resource) {
-      const remaining = (this.respawnAt()[t.key] ?? 0) - Date.now();
+      const remaining = (this.respawnAt()[`${level.id}:${t.key}`] ?? 0) - Date.now();
       if (remaining > 0) {
         this.addLog(`${t.resource.icon} ${t.resource.label} repousse dans ${Math.ceil(remaining / 1000)}s`);
         return;
       }
-      const path = findPath(this.tile, neighbours(t));
+      const path = level.findPath(this.tile, level.neighbours(t));
       if (path) this.walk(path, () => this.harvest(t));
       return;
     }
 
-    if (isWalkable(t.r, t.c)) {
-      const path = findPath(this.tile, [t]);
+    if (level.isWalkable(t.r, t.c)) {
+      const path = level.findPath(this.tile, [t]);
       if (path) this.walk(path);
     }
   }
 
   protected onKey(event: KeyboardEvent): void {
+    if (event.target instanceof HTMLInputElement) return;
     const dir = KEY_DIRS[event.key.length === 1 ? event.key.toLowerCase() : event.key];
     if (!dir || this.harvesting()) return;
     event.preventDefault();
+
+    const level = this.level();
     const target = { r: this.tile.r + dir.r, c: this.tile.c + dir.c };
-    if (neighbours(this.tile).some((n) => n.r === target.r && n.c === target.c)) this.walk([target]);
+    const exit = level.tileAt(this.tile.r, this.tile.c)?.exit;
+    if (!level.tileAt(target.r, target.c) && exit && !this.moving()) {
+      this.changeMap(exit);
+    } else if (level.neighbours(this.tile).some((n) => n.r === target.r && n.c === target.c)) {
+      this.walk([target]);
+    }
+  }
+
+  protected changeMap(dir: Direction): void {
+    if (!this.level().exits.includes(dir) || this.harvesting()) return;
+    const { x, y } = this.player.position();
+    this.player.travel(x + DIR_DELTA[dir].x, y + DIR_DELTA[dir].y);
+    this.enterLevel(OPPOSITE[dir]);
+    this.addLog(`🧭 ${this.level().zone.name} ${this.coords()}`);
+  }
+
+  /** Place le personnage sur la carte courante (au centre, ou à la sortie d'arrivée). */
+  private enterLevel(from?: Direction): void {
+    cancelAnimationFrame(this.raf);
+    this.queue = [];
+    this.onArrive = undefined;
+    this.moving.set(false);
+    this.hovered.set(null);
+
+    const spawn = from ? EXIT_CELLS[from] : { r: MAP_SIZE >> 1, c: MAP_SIZE >> 1 };
+    this.tile = { ...spawn };
+    this.pos.set({ ...spawn });
+    this.sheep.set(this.level().initialSheep());
   }
 
   private walk(path: Cell[], onArrive?: () => void): void {
@@ -254,7 +196,11 @@ export class World {
       this.moving.set(false);
       const cb = this.onArrive;
       this.onArrive = undefined;
-      cb?.();
+      if (cb) cb();
+      else {
+        const exit = this.level().tileAt(this.tile.r, this.tile.c)?.exit;
+        if (exit) this.changeMap(exit);
+      }
       return;
     }
 
@@ -276,13 +222,14 @@ export class World {
 
   private harvest(t: Tile): void {
     const spec = t.resource!;
+    const levelId = this.level().id;
     this.facingLeft.set(t.c - t.r < this.tile.c - this.tile.r);
     this.harvesting.set(true);
 
     setTimeout(() => {
       const qty = 1 + Math.floor(Math.random() * 3);
       this.bank.add(spec.itemId, qty);
-      this.respawnAt.update((r) => ({ ...r, [t.key]: Date.now() + spec.respawnMs }));
+      this.respawnAt.update((r) => ({ ...r, [`${levelId}:${t.key}`]: Date.now() + spec.respawnMs }));
       this.harvesting.set(false);
       this.spawnFloating(t.x, t.y - 30, `+${qty} ${spec.icon}`);
       this.addLog(`${spec.icon} +${qty} ${ITEMS_BY_ID[spec.itemId].name} → banque`);
@@ -290,10 +237,11 @@ export class World {
   }
 
   private wanderSheep(): void {
+    const level = this.level();
     this.sheep.update((all) =>
       all.map((s) => {
         if (Math.random() < 0.4) return s;
-        const options = neighbours(s).filter((n) => n.r !== this.tile.r || n.c !== this.tile.c);
+        const options = level.neighbours(s).filter((n) => !level.tileAt(n.r, n.c)?.exit && (n.r !== this.tile.r || n.c !== this.tile.c));
         return options[Math.floor(Math.random() * options.length)] ?? s;
       }),
     );

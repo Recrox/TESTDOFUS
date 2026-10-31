@@ -68,6 +68,11 @@
     cursor: pointer;
   }
 
+  &.exit {
+    fill: #f1d27a;
+    animation: glow 1.6s ease-in-out infinite;
+  }
+
   &.hover {
     &.grass,
     &.path {
@@ -77,6 +82,41 @@
     &.resource {
       fill: var(--gold);
     }
+  }
+}
+
+@keyframes glow {
+  50% {
+    fill: #ffe9a8;
+  }
+}
+
+.exits {
+  display: grid;
+  grid-template-areas:
+    '. nord .'
+    'ouest . est'
+    '. sud .';
+  gap: 4px;
+
+  .btn {
+    padding: 3px 4px;
+  }
+
+  .exit-nord {
+    grid-area: nord;
+  }
+
+  .exit-sud {
+    grid-area: sud;
+  }
+
+  .exit-est {
+    grid-area: est;
+  }
+
+  .exit-ouest {
+    grid-area: ouest;
   }
 }
 
